@@ -9,4 +9,6 @@ var (
 
 	ErrNoTargets     = errors.New("tcpscan: no targets specified")
 	ErrInvalidTarget = errors.New("tcpscan: invalid target")
+
+	ErrInvalidOption = errors.New("tcpscan: invalid option")
 )
