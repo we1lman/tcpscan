@@ -6,6 +6,21 @@ import (
 	"strings"
 )
 
+// ParsePorts builds a port set from a textual specification, which is handy for
+// command line flags and configuration files.
+//
+// The specification is a comma separated list of single ports and ranges:
+//
+//	80
+//	22,80,443
+//	1-1024
+//	20-25,80,8000-8100
+//
+// Space around elements and around the dash of a range is ignored. Every number
+// must consist of decimal digits only and lie in the range 1-65535. Overlapping
+// ranges and repeated ports are merged.
+//
+// Like the other constructors, ParsePorts defers its error to PortSet.Err.
 func ParsePorts(spec string) PortSet {
 	trimmed := strings.TrimSpace(spec)
 	if trimmed == "" {
