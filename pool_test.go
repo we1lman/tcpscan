@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"go.uber.org/goleak"
 )
 
 type countingDialer struct {
@@ -55,6 +57,8 @@ func (c *countingDialer) stats() (peak, total int) {
 }
 
 func TestScanRespectsConcurrencyLimit(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	const limit = 8
 
 	d := &countingDialer{delay: 2 * time.Millisecond}
@@ -80,6 +84,8 @@ func TestScanRespectsConcurrencyLimit(t *testing.T) {
 }
 
 func TestScanWithConcurrencyOneKeepsOrder(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	d := &fakeDialer{}
 	s := newTestScanner(t, d, nil, WithConcurrency(1))
 
@@ -96,6 +102,8 @@ func TestScanWithConcurrencyOneKeepsOrder(t *testing.T) {
 }
 
 func TestScanCompletesEveryJob(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	d := &countingDialer{}
 	s := newTestScanner(t, d, nil, WithConcurrency(64))
 
@@ -126,6 +134,8 @@ func TestScanCompletesEveryJob(t *testing.T) {
 }
 
 func TestScanStopsProducingAfterCancel(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	const total = 3000
 
 	d := &countingDialer{delay: time.Millisecond}
@@ -157,10 +167,14 @@ func TestScanStopsProducingAfterCancel(t *testing.T) {
 }
 
 func TestScanClosesChannelAfterCancel(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	d := &countingDialer{delay: time.Millisecond}
 	s := newTestScanner(t, d, nil, WithConcurrency(4))
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	cancel()
 
 	ch, err := s.Scan(ctx, []string{"10.0.0.1"}, Range(1, 1000))
@@ -168,25 +182,34 @@ func TestScanClosesChannelAfterCancel(t *testing.T) {
 		t.Fatalf("Scan: %v", err)
 	}
 
-	done := make(chan struct{})
+	drained := make(chan int, 1)
+
 	go func() {
-		defer close(done)
+		count := 0
 		for range ch {
+			count++
 		}
+		drained <- count
 	}()
 
 	select {
-	case <-done:
+	case count := <-drained:
+		if count != 0 {
+			t.Errorf("received %d results, want 0: the producer ignored the cancelled context", count)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("channel was not closed after cancel")
 	}
 }
 
 func TestScanStopsWhenConsumerAbandonsChannel(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	d := &countingDialer{delay: time.Millisecond}
 	s := newTestScanner(t, d, nil, WithConcurrency(4))
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	ch, err := s.Scan(ctx, []string{"10.0.0.1"}, Range(1, 5000))
 	if err != nil {
@@ -211,11 +234,15 @@ func TestScanStopsWhenConsumerAbandonsChannel(t *testing.T) {
 }
 
 func TestScanStopsOnCancelWhenResolverFails(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	d := &countingDialer{}
 	r := &fakeResolver{err: &net.DNSError{Err: "no such host", Name: "nope.invalid"}}
 	s := newTestScanner(t, d, r, WithConcurrency(4))
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	cancel()
 
 	ch, err := s.Scan(ctx, []string{"a.invalid", "b.invalid", "c.invalid"}, Ports(80))
@@ -236,6 +263,8 @@ func TestScanStopsOnCancelWhenResolverFails(t *testing.T) {
 }
 
 func TestScanDeliversEveryResultToSlowConsumer(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	const ports = 50
 
 	d := &countingDialer{}
@@ -263,6 +292,8 @@ func TestScanDeliversEveryResultToSlowConsumer(t *testing.T) {
 }
 
 func TestScannerIsReusableConcurrently(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	d := &countingDialer{}
 	s := newTestScanner(t, d, nil, WithConcurrency(16))
 
@@ -302,6 +333,8 @@ func TestScannerIsReusableConcurrently(t *testing.T) {
 }
 
 func TestScanSequentialReuse(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	d := &countingDialer{}
 	s := newTestScanner(t, d, nil, WithConcurrency(8))
 
