@@ -1,5 +1,3 @@
-//go:build design
-
 package tcpscan_test
 
 import (
@@ -107,6 +105,8 @@ func ExampleScanner_Scan_states() {
 			fmt.Printf("%d canceled\n", r.Port)
 		case tcpscan.StateError:
 			fmt.Printf("%d error: %v\n", r.Port, r.Err)
+		case tcpscan.StateUnknown:
+			fmt.Printf("%d unknown\n", r.Port)
 		}
 	}
 }
