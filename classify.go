@@ -17,9 +17,13 @@ func classify(ctx context.Context, err error) State {
 		return StateCanceled
 	case isTimeout(err):
 		return StateTimeout
-	default:
-		return StateError
 	}
+
+	if state, ok := classifySyscallError(err); ok {
+		return state
+	}
+
+	return StateError
 }
 
 func isTimeout(err error) bool {
