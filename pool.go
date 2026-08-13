@@ -38,9 +38,16 @@ func (s *Scanner) produce(ctx context.Context, hosts []string, ports []uint16, j
 
 		targets, err := resolveHost(ctx, s.cfg.resolver, host)
 		if err != nil {
-			if !send(ctx, out, Result{Host: host, State: StateError, Err: err}) {
+			res := Result{
+				Host:  host,
+				State: classify(ctx, err),
+				Err:   err,
+			}
+
+			if !send(ctx, out, res) {
 				return
 			}
+
 			continue
 		}
 
@@ -81,21 +88,16 @@ func (s *Scanner) check(ctx context.Context, tg target, port uint16) Result {
 	conn, err := s.cfg.dialer.DialContext(dialCtx, "tcp", tg.address(port))
 	elapsed := time.Since(started)
 
-	res := Result{
+	if conn != nil {
+		_ = conn.Close()
+	}
+
+	return Result{
 		Host:     tg.host,
 		IP:       tg.ip,
 		Port:     port,
+		State:    classify(ctx, err),
 		Duration: elapsed,
+		Err:      err,
 	}
-
-	if err != nil {
-		res.State = StateError
-		res.Err = err
-		return res
-	}
-
-	_ = conn.Close()
-	res.State = StateOpen
-
-	return res
 }
