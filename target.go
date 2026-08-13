@@ -24,16 +24,18 @@ func normalizeHosts(hosts []string) ([]string, error) {
 	out := make([]string, 0, len(hosts))
 	seen := make(map[string]struct{}, len(hosts))
 
-	for i, h := range hosts {
-		h = strings.TrimSpace(h)
-		if h == "" {
-			return nil, fmt.Errorf("%w: host at index %d is empty", ErrInvalidTarget, i)
+	for _, h := range hosts {
+		trimmed := strings.TrimSpace(h)
+		if trimmed == "" {
+			return nil, &TargetError{Input: h, Err: ErrInvalidTarget}
 		}
-		if _, dup := seen[h]; dup {
+
+		if _, dup := seen[trimmed]; dup {
 			continue
 		}
-		seen[h] = struct{}{}
-		out = append(out, h)
+
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
 	}
 
 	return out, nil
@@ -46,10 +48,14 @@ func resolveHost(ctx context.Context, r resolver, host string) ([]target, error)
 
 	ips, err := r.LookupIP(ctx, "ip", host)
 	if err != nil {
-		return nil, err
+		return nil, &TargetError{Input: host, Err: err}
 	}
+
 	if len(ips) == 0 {
-		return nil, fmt.Errorf("%w: %s resolved to no addresses", ErrInvalidTarget, host)
+		return nil, &TargetError{
+			Input: host,
+			Err:   fmt.Errorf("%w: resolved to no addresses", ErrInvalidTarget),
+		}
 	}
 
 	out := make([]target, 0, len(ips))
@@ -60,6 +66,7 @@ func resolveHost(ctx context.Context, r resolver, host string) ([]target, error)
 		if _, dup := seen[key]; dup {
 			continue
 		}
+
 		seen[key] = struct{}{}
 		out = append(out, target{host: host, ip: ip})
 	}
