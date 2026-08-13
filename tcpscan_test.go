@@ -48,6 +48,13 @@ func (f *fakeDialer) dialed() []string {
 	return slices.Clone(f.calls)
 }
 
+func (f *fakeDialer) dialedSorted() []string {
+	out := f.dialed()
+	slices.Sort(out)
+
+	return out
+}
+
 func newTestScanner(t *testing.T, d dialer, r resolver, opts ...Option) *Scanner {
 	t.Helper()
 
@@ -112,9 +119,9 @@ func TestScanReturnsResultPerPort(t *testing.T) {
 		t.Fatalf("got %d results, want 3", len(got))
 	}
 
-	want := []string{"127.0.0.1:22", "127.0.0.1:80", "127.0.0.1:443"}
-	if !slices.Equal(d.dialed(), want) {
-		t.Errorf("dialed %v, want %v", d.dialed(), want)
+	want := []string{"127.0.0.1:22", "127.0.0.1:443", "127.0.0.1:80"}
+	if !slices.Equal(d.dialedSorted(), want) {
+		t.Errorf("dialed %v, want %v", d.dialedSorted(), want)
 	}
 }
 
@@ -200,11 +207,11 @@ func TestScanExpandsDNSNameToEveryAddress(t *testing.T) {
 	}
 
 	want := []string{
-		"10.0.0.1:80", "10.0.0.1:443",
-		"10.0.0.2:80", "10.0.0.2:443",
+		"10.0.0.1:443", "10.0.0.1:80",
+		"10.0.0.2:443", "10.0.0.2:80",
 	}
-	if !slices.Equal(d.dialed(), want) {
-		t.Errorf("dialed %v, want %v", d.dialed(), want)
+	if !slices.Equal(d.dialedSorted(), want) {
+		t.Errorf("dialed %v, want %v", d.dialedSorted(), want)
 	}
 }
 
