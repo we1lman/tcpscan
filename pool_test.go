@@ -182,6 +182,86 @@ func TestScanClosesChannelAfterCancel(t *testing.T) {
 	}
 }
 
+func TestScanStopsWhenConsumerAbandonsChannel(t *testing.T) {
+	d := &countingDialer{delay: time.Millisecond}
+	s := newTestScanner(t, d, nil, WithConcurrency(4))
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	ch, err := s.Scan(ctx, []string{"10.0.0.1"}, Range(1, 5000))
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+
+	for range 5 {
+		<-ch
+	}
+
+	cancel()
+	time.Sleep(300 * time.Millisecond)
+
+	select {
+	case _, open := <-ch:
+		if open {
+			t.Error("received a result, want closed channel: a worker is stuck sending")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("channel is neither closed nor readable: the scan is deadlocked")
+	}
+}
+
+func TestScanStopsOnCancelWhenResolverFails(t *testing.T) {
+	d := &countingDialer{}
+	r := &fakeResolver{err: &net.DNSError{Err: "no such host", Name: "nope.invalid"}}
+	s := newTestScanner(t, d, r, WithConcurrency(4))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	ch, err := s.Scan(ctx, []string{"a.invalid", "b.invalid", "c.invalid"}, Ports(80))
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	select {
+	case _, open := <-ch:
+		if open {
+			t.Error("received a result, want closed channel: the producer is stuck sending")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("channel is neither closed nor readable: the scan is deadlocked")
+	}
+}
+
+func TestScanDeliversEveryResultToSlowConsumer(t *testing.T) {
+	const ports = 50
+
+	d := &countingDialer{}
+	s := newTestScanner(t, d, nil, WithConcurrency(16))
+
+	ch, err := s.Scan(context.Background(), []string{"10.0.0.1"}, Range(1, ports))
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+
+	received := 0
+	for range ch {
+		received++
+		time.Sleep(time.Millisecond)
+	}
+
+	if received != ports {
+		t.Errorf("received %d results, want %d", received, ports)
+	}
+
+	_, dialed := d.stats()
+	if dialed != ports {
+		t.Errorf("dialed %d addresses, want %d", dialed, ports)
+	}
+}
+
 func TestScannerIsReusableConcurrently(t *testing.T) {
 	d := &countingDialer{}
 	s := newTestScanner(t, d, nil, WithConcurrency(16))

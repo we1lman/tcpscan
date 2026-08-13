@@ -38,7 +38,9 @@ func (s *Scanner) produce(ctx context.Context, hosts []string, ports []uint16, j
 
 		targets, err := resolveHost(ctx, s.cfg.resolver, host)
 		if err != nil {
-			out <- Result{Host: host, State: StateError, Err: err}
+			if !send(ctx, out, Result{Host: host, State: StateError, Err: err}) {
+				return
+			}
 			continue
 		}
 
@@ -56,7 +58,18 @@ func (s *Scanner) produce(ctx context.Context, hosts []string, ports []uint16, j
 
 func (s *Scanner) worker(ctx context.Context, jobs <-chan job, out chan<- Result) {
 	for j := range jobs {
-		out <- s.check(ctx, j.target, j.port)
+		if !send(ctx, out, s.check(ctx, j.target, j.port)) {
+			return
+		}
+	}
+}
+
+func send(ctx context.Context, out chan<- Result, res Result) bool {
+	select {
+	case out <- res:
+		return true
+	case <-ctx.Done():
+		return false
 	}
 }
 
